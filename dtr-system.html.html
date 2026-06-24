@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Time Record System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#0f766e',
+                        secondary: '#115e59',
+                        dark: '#1e293b',
+                        light: '#f8fafc'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        html { -webkit-text-size-adjust: 100%; }
+        .time-btn {
+            transition: all 0.2s;
+            font-weight: 600;
+            min-width: 140px;
+            padding: 12px 20px;
+            font-size: 1rem;
+        }
+        .time-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .time-btn:not(:disabled):hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        .active-shift {
+            border: 2px solid #0f766e !important;
+            background-color: #ecfdf5 !important;
+        }
+        .inactive-shift {
+            opacity: 0.6;
+        }
+        .camera-container {
+            width: 100%;
+            max-width: 280px;
+            height: 210px;
+            margin: 0 auto 15px;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #000;
+            position: relative;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .camera-status {
+            position: absolute;
+            bottom: 5px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            color: white;
+            font-size: 12px;
+            background: rgba(0,0,0,0.6);
+            padding: 2px;
+        }
+        @media print {
+            body * { visibility: hidden; }
+            #printArea, #printArea * { visibility: visible; }
+            #printArea { position: absolute; left: 0; top: 0; width: 100%; padding: 20px; font-size: 12px; }
+            .no-print { display: none !important; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #000; padding: 6px; text-align: left; }
+        }
+    </style>
+</head>
+<body class="font-sans bg-gray-50 text-gray-800">
+
+<!-- Toggle Login Button -->
+<div class="fixed top-4 left-4 z-50 no-print">
+    <button id="toggleLoginBtn" onclick="toggleLoginType()" class="bg-white shadow-md px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 flex items-center gap-2">
+        <i class="fa fa-exchange-alt"></i>
+        <span id="toggleText">Switch to Admin Login</span>
+    </button>
+</div>
+
+<!-- Employee Login Screen -->
+<div id="employeeLoginScreen" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-50 to-emerald-100 px-4">
+    <div class="bg-white p-6 sm:p-8 rounded-xl shadow-lg w-full max-w-md">
+        <div class="text-center mb-6">
+            <div id="loginLiveTime" class="text-2xl sm:text-3xl font-bold text-primary mb-2"></div>
+            <div id="loginLiveDate" class="text-lg text-gray-600"></div>
+        </div>
+        <div class="text-center mb-6">
+            <i class="fa fa-clock text-primary text-4xl mb-3"></i>
+            <h2 class="text-2xl font-bold">EMPLOYEE BIOMETRIC</h2>
+            <p class="text-gray-600 mt-1">Log your time easily</p>
+        </div>
+        <div id="empLoginError" class="hidden bg-red-100 text-red-700 p-3 rounded mb-4 text-center"></div>
+        <form id="employeeLoginForm">
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Employee ID / Username</label>
+                <input type="text" id="empId" required class="w-full border border-gray-300 rounded p-3 focus:outline-none focus:ring-1 focus:ring-primary" placeholder="Enter your ID">
+            </div>
+            <div class="mb-6 relative">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <input type="password" id="empPass" required class="w-full border border-gray-300 rounded p-3 pr-10 focus:outline-none focus:ring-1 focus:ring-primary" placeholder="Enter your password">
+                <i class="fa fa-eye absolute right-3 top-9 cursor-pointer text-gray-500" id="empEyeToggle" onclick="togglePass('emp')"></i>
+            </div>
+            <button type="submit" class="w-full bg-primary hover:bg-secondary text-white font-medium py-3 rounded-lg transition">
+                <i class="fa fa-sign-in-alt mr-2"></i> Login
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Admin Login Screen -->
+<div id="adminLoginScreen" class="min-h-screen hidden items-center justify-center bg-gradient-to-br from-red-50 to-rose-100 px-4">
+    <div class="bg-white p-6 sm:p-8 rounded-xl shadow-lg w-full max-w-md">
+        <div class="text-center mb-6">
+            <i class="fa fa-user-shield text-red-600 text-4xl mb-3"></i>
+            <h2 class="text-2xl font-bold">ADMINISTRATOR LOGIN</h2>
+            <p class="text-gray-600 mt-1">System Management Access</p>
+        </div>
+        <div id="adminLoginError" class="hidden bg-red-100 text-red-700 p-3 rounded mb-4 text-center"></div>
+        <form id="adminLoginForm">
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Admin Username</label>
+                <input type="text" id="adminUser" required class="w-full border border-gray-300 rounded p-3 focus:outline-none focus:ring-1 focus:ring-red-500" placeholder="Enter admin username">
+            </div>
+            <div class="mb-6 relative">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <input type="password" id="adminPass" required class="w-full border border-gray-300 rounded p-3 pr-10 focus:outline-none focus:ring-1 focus:ring-red-500" placeholder="Enter admin password">
+                <i class="fa fa-eye absolute right-3 top-9 cursor-pointer text-gray-500" id="adminEyeToggle" onclick="togglePass('admin')"></i>
+            </div>
+            <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-3 rounded-lg transition">
+                <i class="fa fa-sign-in-alt mr-2"></i> Login
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Main System After Login -->
+<div id="mainSystem" class="hidden min-h-screen bg-gray-50">
+    <header class="bg-white shadow-md p-4 flex justify-between items-center no-print">
+        <div>
+            <h1 class="text-xl font-bold text-primary">ATTENDANCE SYSTEM</h1>
+            <p class="text-sm text-gray-600">Welcome, <span id="loggedInName" class="font-semibold"></span> (<span id="userRole" class="text-xs uppercase"></span>)</p>
+        </div>
+        <div class="flex gap-3 items-center">
+            <button onclick="logout()" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm">
+                <i class="fa fa-sign-out-alt mr-1"></i> Logout
+            </button>
+        </div>
+    </header>
+
+    <!-- Navigation for Admin -->
+    <nav id="adminNav" class="hidden bg-white shadow-sm border-b no-print">
+        <div class="container mx-auto px-4 py-2 flex flex-wrap gap-4 overflow-x-auto">
+            <button onclick="showSection('timeLog')" class="px-3 py-1 rounded hover:bg-gray-100">Dashboard</button>
+            <button onclick="showSection('allRecords')" class="px-3 py-1 rounded hover:bg-gray-100">All Attendance</button>
+            <button onclick="showSection('manageUsers')" class="px-3 py-1 rounded hover:bg-gray-100">Manage Users</button>
+            <button onclick="showSection('printDtr')" class="px-3 py-1 rounded hover:bg-gray-100 text-green-600">Print DTR</button>
+            <button onclick="openBackupModal()" class="px-3 py-1 rounded bg-amber-500 hover:bg-amber-600 text-white">
+                <i class="fa fa-download mr-1"></i> BACKUP
+            </button>
+            <button onclick="openRestoreModal()" class="px-3 py-1 rounded bg-indigo-500 hover:bg-indigo-600 text-white">
+                <i class="fa fa-upload mr-1"></i> RESTORE
+            </button>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 py-8">
+        <!-- Time Log Section -->
+        <section id="timeLog" class="block">
+            <div class="text-center mb-8">
+                <div id="liveTime" class="text-2xl sm:text-3xl font-bold text-dark mb-2"></div>
+                <div id="liveDate" class="text-lg text-gray-600"></div>
+            </div>
+            <div id="singleCameraContainer" class="hidden max-w-[280px] mx-auto mb-6">
+                <div class="camera-container">
+                    <video id="mainCamera" autoplay playsinline muted></video>
+                    <div class="camera-status">Camera Ready</div>
+                </div>
+            </div>
+            <div id="employeeTimeLogContent" class="hidden">
+                <div class="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+                    <div id="morningBox" class="bg-blue-50 p-6 rounded-xl border border-blue-200 text-center">
+                        <h3 class="text-xl font-semibold text-blue-800 mb-4">MORNING SHIFT</h3>
+                        <div class="flex flex-wrap justify-center gap-4">
+                            <button id="btnAmIn" onclick="recordTime('am_in')" class="time-btn bg-blue-600 hover:bg-blue-700 text-white rounded-lg">TIME IN</button>
+                            <button id="btnAmOut" onclick="recordTime('am_out')" class="time-btn bg-blue-600 hover:bg-blue-700 text-white rounded-lg">TIME OUT</button>
+                        </div>
+                        <p class="text-sm text-blue-700 mt-3">Last recorded: <span id="lastAm">—</span></p>
+                    </div>
+                    <div id="afternoonBox" class="bg-green-50 p-6 rounded-xl border border-green-200 text-center">
+                        <h3 class="text-xl font-semibold text-green-800 mb-4">AFTERNOON SHIFT</h3>
+                        <div class="flex flex-wrap justify-center gap-4">
+                            <button id="btnPmIn" onclick="recordTime('pm_in')" class="time-btn bg-green-600 hover:bg-green-700 text-white rounded-lg">TIME IN</button>
+                            <button id="btnPmOut" onclick="recordTime('pm_out')" class="time-btn bg-green-600 hover:bg-green-700 text-white rounded-lg">TIME OUT</button>
+                        </div>
+                        <p class="text-sm text-green-700 mt-3">Last recorded: <span id="lastPm">—</span></p>
+                    </div>
+                </div>
+                <div id="recordStatus" class="mt-8 max-w-2xl mx-auto p-4 rounded-lg text-center hidden"></div>
+                <div class="text-center mt-8">
+                    <button onclick="showSection('myRecords')" class="text-primary font-medium hover:underline">View My Attendance Records</button>
+                </div>
+            </div>
+            <div id="adminTimeLogContent" class="hidden"></div>
+        </section>
+
+        <!-- My Records Section -->
+        <section id="myRecords" class="hidden mt-10 max-w-4xl mx-auto">
+            <h3 class="text-xl font-bold mb-4">My Attendance History</h3>
+            <div class="bg-white rounded-lg shadow overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-2 text-left">Date</th>
+                            <th class="px-4 py-2 text-left">AM In</th>
+                            <th class="px-4 py-2 text-left">AM Out</th>
+                            <th class="px-4 py-2 text-left">PM In</th>
+                            <th class="px-4 py-2 text-left">PM Out</th>
+                            <th class="px-4 py-2 text-left">Total Hours</th>
+                        </tr>
+                    </thead>
+                    <tbody id="myRecordsTable"></tbody>
+                </table>
+            </div>
+            <button onclick="showSection('timeLog')" class="mt-4 text-gray-600 hover:underline">← Back to Time Log</button>
+        </section>
+
+        <!-- All Attendance Section -->
+        <section id="allRecords" class="hidden mt-6">
+            <h3 class="text-xl font-bold mb-4">All Employee Biometrics</h3>
+            <div class="bg-white p-4 rounded-lg shadow mb-4 flex flex-wrap gap-3 items-center">
+                <div><label class="mr-2 font-medium">View:</label>
+                    <select id="viewType" onchange="toggleEmployeeSelect()" class="border rounded p-2">
+                        <option value="all">All Employees</option>
+                        <option value="individual">Per Individual</option>
+                    </select>
+                </div>
+                <div id="empSelectDiv" class="hidden">
+                    <select id="selectedEmp" class="border rounded p-2"><option value="">-- Select Employee --</option></select>
+                </div>
+                <input type="text" id="searchAll" placeholder="Search by name or date..." class="border rounded p-2 w-full md:w-64">
+                <button onclick="loadAllRecords()" class="bg-primary text-white px-3 py-1 rounded">Load Records</button>
+            </div>
+            <div class="bg-white rounded-lg shadow overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-2 text-left">Date</th>
+                            <th class="px-4 py-2 text-left">Employee ID</th>
+                            <th class="px-4 py-2 text-left">Full Name</th>
+                            <th class="px-4 py-2 text-left">AM In</th>
+                            <th class="px-4 py-2 text-left">AM Out</th>
+                            <th class="px-4 py-2 text-left">PM In</th>
+                            <th class="px-4 py-2 text-left">PM Out</th>
+                            <th class="px-4 py-2 text-left">Total Hours</th>
+                        </tr>
+                    </thead>
+                    <tbody id="allRecordsTable"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Manage Users Section -->
+        <section id="manageUsers" class="hidden mt-6">
+            <h3 class="text-xl font-bold mb-4">Manage Users & Credentials</h3>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="bg-white p-5 rounded-lg shadow">
+                    <h4 class="text-lg font-semibold mb-4">Add New User</h4>
+                    <form id="addUserForm">
+                        <div class="mb-3">
+                            <label class="block text-sm font-medium">Employee ID / Username</label>
+                            <input type="text" id="newId" required class="w-full border rounded p-2">
+                        </div>
+                        <div class="mb-3">
+                            <label class="block text-sm font-medium">Full Name</label>
+                            <input type="text" id="newName" required class="w-full border rounded p-2">
+                        </div>
+                        <div class="mb-3">
+                            <label class="block text-sm font-medium">Password</label>
+                            <input type="password" id="newPass" required class="w-full border rounded p-2">
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium">Role</label>
+                            <select id="newRole" class="w-full border rounded p-2">
+                                <option value="employee">Employee</option>
+                                <option value="admin">Administrator</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="w-full bg-primary text-white py-2 rounded hover:bg-secondary">Add User</button>
+                    </form>
+                </div>
+                <div class="bg-white p-5 rounded-lg shadow">
+                    <h4 class="text-lg font-semibold mb-4">Existing Users</h4>
+                    <div id="userList" class="space-y-3 max-h-96 overflow-y-auto"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Print DTR Section -->
+        <section id="printDtr" class="hidden mt-6">
+            <h3 class="text-xl font-bold mb-4">Print Daily Time Record</h3>
+            <div id="printArea" class="bg-white p-6 rounded-lg shadow"></div>
+        </section>
+    </div>
+</div>
+
+<!-- Backup & Restore Modals -->
+<div id="backupModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-lg p-6 w-full max-w-md">
+        <h3 class="text-xl font-bold mb-4">Backup Attendance Records</h3>
+        <p class="mb-4 text-gray-600">Choose format to download:</p>
+        <div class="flex flex-col gap-3">
+            <button onclick="exportToExcel()" class="bg-green-600 hover:bg-green-700 text-white py-2 rounded">Download as Excel (.csv)</button>
+            <button onclick="exportToPDF()" class="bg-red-600 hover:bg-red-700 text-white py-2 rounded">Download as PDF</button>
+        </div>
+        <button onclick="closeBackupModal()" class="mt-5 w-full bg-gray-200 hover:bg-gray-300 py-2 rounded">Cancel</button>
+    </div>
+</div>
+
+<div id="restoreModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-lg p-6 w-full max-w-md">
+        <h3 class="text-xl font-bold mb-4">Restore from Backup</h3>
+        <p class="mb-3 text-gray-600">Select your saved backup file:</p>
+        <input type="file" id="backupFileInput" accept=".csv" class="w-full border rounded p-2 mb-4">
+        <p class="mb-4 text-sm text-yellow-600 font-medium">⚠️ This will replace all current records.</p>
+        <div class="flex gap-3">
+            <button onclick="restoreFromBackup()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded">Restore</button>
+            <button onclick="closeRestoreModal()" class="w-full bg-gray-200 hover:bg-gray-300 py-2 rounded">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<canvas id="snapshotCanvas" style="display:none;"></canvas>
+
+<script>
+let users = JSON.parse(localStorage.getItem('dtrUsers')) || {
+    admin: { password: 'admin123', role: 'admin', fullName: 'System Administrator' },
+    EMP001: { password: 'emp123', role: 'employee', fullName: 'Juan Dela Cruz' },
+    EMP002: { password: 'emp456', role: 'employee', fullName: 'Maria Santos' }
+};
+let dtrRecords = JSON.parse(localStorage.getItem('dtrRecords')) || [];
+let currentUser = null;
+
+async function initCameras() {
+    if (currentUser && currentUser.role === 'employee') {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 320, height: 240 }, audio: false });
+            document.getElementById('mainCamera').srcObject = stream;
+            document.getElementById('singleCameraContainer').classList.remove('hidden');
+        } catch (err) {
+            document.querySelector('.camera-status').textContent = 'Camera access denied';
+            document.querySelector('.camera-status').style.color = '#ff0000';
+        }
+    }
+}
+
+function captureSnapshot() {
+    const video = document.getElementById('mainCamera');
+    const canvas = document.getElementById('snapshotCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.7);
+}
+
+function updateLoginTime() {
+    const now = new Date();
+    document.getElementById('loginLiveTime').textContent = now.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    document.getElementById('loginLiveDate').textContent = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}
+setInterval(updateLoginTime, 1000);
+updateLoginTime();
+
+function toggleLoginType() {
+    const empScreen = document.getElementById('employeeLoginScreen');
+    const adminScreen = document.getElementById('adminLoginScreen');
+    const toggleText = document.getElementById('toggleText');
+    if (!empScreen.classList.contains('hidden')) {
+        empScreen.classList.add('hidden');
+        adminScreen.classList.remove('hidden');
+        adminScreen.classList.add('flex');
+        toggleText.textContent = 'Switch to Employee Login';
+    } else {
+        adminScreen.classList.add('hidden');
+        empScreen.classList.remove('hidden');
+        empScreen.classList.add('flex');
+        toggleText.textContent = 'Switch to Admin Login';
+    }
+}
+
+function togglePass(type) {
+    const input = document.getElementById(type === 'emp' ? 'empPass' : 'adminPass');
+    const icon = document.getElementById(type === 'emp' ? 'empEyeToggle' : 'adminEyeToggle');
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
+    } else {
+        input.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
+    }
+}
+
+document.getElementById('employeeLoginForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const id = document.getElementById('empId').value.trim();
+    const pass = document.getElementById('empPass').value;
+    const error = document.getElementById('empLoginError');
+    error.classList.add('hidden');
+    if (!users[id]) { error.textContent = 'User not found'; error.classList.remove('hidden'); return; }
+    if (users[id].password !== pass) { error.textContent = 'Incorrect password'; error.classList.remove('hidden'); return; }
+    if (users[id].role !== 'employee') { error.textContent = 'Use Admin login instead'; error.classList.remove('hidden'); return; }
+    currentUser = { id: id, ...users[id] };
+    document.getElementById('employeeLoginScreen').classList.add('hidden');
+    document.getElementById('mainSystem').classList.remove('hidden');
+    document.getElementById('adminNav').classList.add('hidden');
+    document.getElementById('employeeTimeLogContent').classList.remove('hidden');
+    document.getElementById('adminTimeLogContent').classList.add('hidden');
+    updateLiveDisplay();
+    updateActiveButtons();
+    loadTodayStatus();
+    initCameras();
+});
+
+document.getElementById('adminLoginForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const id = document.getElementById('adminUser').value.trim();
+    const pass = document.getElementById('adminPass').value;
+    const error = document.getElementById('adminLoginError');
+    error.classList.add('hidden');
+    if (!users[id]) { error.textContent = 'Admin not found'; error.classList.remove('hidden'); return; }
+    if (users[id].password !== pass) { error.textContent = 'Incorrect password'; error.classList.remove('hidden'); return; }
+    if (users[id].role !== 'admin') { error.textContent = 'Not authorized as Admin'; error.classList.remove('hidden'); return; }
+    currentUser = { id: id, ...users[id] };
+    document.getElementById('adminLoginScreen').classList.add('hidden');
+    document.getElementById('mainSystem').classList.remove('hidden');
+    document.getElementById('adminNav').classList.remove('hidden');
+    document.getElementById('employeeTimeLogContent').classList.add('hidden');
+    document.getElementById('adminTimeLogContent').classList.remove('hidden');
+    updateLiveDisplay();
+    populateEmployeeDropdowns();
+    renderUserList();
+});
+
+function updateLiveDisplay() {
+    const now = new Date();
+    document.getElementById('liveTime').textContent = now.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    document.getElementById('liveDate').textContent = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    document.getElementById('loggedInName').textContent = currentUser.fullName;
+    document.getElementById('userRole').textContent = currentUser.role;
+}
+setInterval(updateLiveDisplay, 1000);
+
+function updateActiveButtons() {
+    const now = new Date();
+    const totalMinutes = now.getHours() * 60 + now.getMinutes();
+    const btnAmIn = document.getElementById('btnAmIn');
+    const btnAmOut = document.getElementById('btnAmOut');
+    const btnPmIn = document.getElementById('btnPmIn');
+    const btnPmOut = document.getElementById('btnPmOut');
+    const amBox = document.getElementById('morningBox');
+    const pmBox = document.getElementById('afternoonBox');
+    btnAmIn.disabled = btnAmOut.disabled = btnPmIn.disabled = btnPmOut.disabled = true;
+    amBox.classList.remove('active-shift');
+    pmBox.classList.remove('active-shift');
+    amBox.classList.add('inactive-shift');
+    pmBox.classList.add('inactive-shift');
+    if (totalMinutes >= 360 && totalMinutes <= 720) {
+        btnAmIn.disabled = false;
+        btnAmOut.disabled = false;
+        amBox.classList.add('active-shift');
+        amBox.classList.remove('inactive-shift');
+    }
+    if (totalMinutes >= 780 && totalMinutes <= 1080) {
+        btnPmIn.disabled = false;
+        btnPmOut.disabled = false;
+        pmBox.classList.add('active-shift');
+        pmBox.classList.remove('inactive-shift');
+    }
+}
+
+function timeTo24h(timeStr) {
+    if (!timeStr || timeStr === '—') return null;
+    const [t, ap] = timeStr.split(' ');
+    let [h, m] = t.split(':');
+    h = parseInt(h);
+    if (ap === 'AM' && h === 12) h = 0;
+    if (ap === 'PM' && h !== 12) h += 12;
+    return `${h.toString().padStart(2, '0')}:${m}`;
+}
+
+function formatTime12(timeStr) {
+    if (!timeStr) return '—';
+    const [h, m] = timeStr.split(':');
+    const hour = parseInt(h);
+    const ap = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${m} ${ap}`;
+}
+
+function recordTime(type) {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    const photo = captureSnapshot();
+    let record = dtrRecords.find(r => r.empId === currentUser.id && r.date === today);
+    if (!record) {
+        record = { empId: currentUser.id, empName: currentUser.fullName, date: today, amIn: null, amOut: null, pmIn: null, pmOut: null, photos: {} };
+        dtrRecords.push(record);
+    }
+    if ((type === 'am_in' && record.amIn) || (type === 'am_out' && record.amOut) || (type === 'pm_in' && record.pmIn) || (type === 'pm_out' && record.pmOut)) {
+        showStatus('warning', 'This time entry is already recorded for today.');
+        return;
+    }
+    switch(type) {
+        case 'am_in': record.amIn = timeStr; record.photos.amIn = photo; break;
+        case 'am_out': record.amOut = timeStr; record.photos.amOut = photo; break;
+        case 'pm_in': record.pmIn = timeStr; record.photos.pmIn = photo; break;
+        case 'pm_out': record.pmOut = timeStr; record.photos.pmOut = photo; break;
+    }
+    localStorage.setItem('dtrRecords', JSON.stringify(dtrRecords));
+    showStatus('success', `✅ ${type.replace('_', ' ').toUpperCase()} recorded at ${formatTime12(timeStr)}`);
+    loadTodayStatus();
+}
+
+function loadTodayStatus() {
+    const today = new Date().toISOString().split('T')[0];
+    const record = dtrRecords.find(r => r.empId === currentUser.id && r.date === today);
+    document.getElementById('lastAm').textContent = record ? `${formatTime12(record.amIn)} / ${formatTime12(record.amOut)}` : '— / —';
+    document.getElementById('lastPm').textContent = record ? `${formatTime12(record.pmIn)} / ${formatTime12(record.pmOut)}` : '— / —';
+}
+
+function showStatus(type, text) {
+    const el = document.getElementById('recordStatus');
+    el.textContent = text;
+    el.className = `mt-8 max-w-2xl mx-auto p-4 rounded-lg text-center ${type === 'success' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+function calculateHours(start, end) {
+    if (!start || !end) return '—';
+    const [h1, m1] = start.split(':').map(Number);
+    const [h2, m2] = end.split(':').map(Number);
+    const total = (h2 * 60 + m2) - (h1 * 60 + m1);
+    if (total < 0) return '—';
+    const hrs = Math.floor(total / 60);
+    const mins = total % 60;
+    return `${hrs}h ${mins}m`;
+}
+
+function showSection(id) {
+    document.querySelectorAll('section').forEach(s => s.classList.add('hidden'));
+    document.getElementById(id).classList.remove('hidden');
+    if (id === 'myRecords') loadMyRecords();
+    if (id === 'allRecords') loadAllRecords();
+    if (id === 'manageUsers') renderUserList();
+}
+
+function loadMyRecords() {
+    const list = dtrRecords.filter(r => r.empId === currentUser.id).sort((a,b) => new Date(b.date) - new Date(a.date));
+    const html = list.length ? list.map(r => `
+        <tr class="border-b hover:bg-gray-50">
+            <td class="px-4 py-2">${r.date}</td>
+            <td class="px-4 py-2">${formatTime12(r.amIn)}</td>
+            <td class="px-4 py-2">${formatTime12(r.amOut)}</td>
+            <td class="px-4 py-2">${formatTime12(r.pmIn)}</td>
+            <td class="px-4 py-2">${formatTime12(r.pmOut)}</td>
+            <td class="px-4 py-2 font-medium">${calculateHours(r.amIn, r.amOut)} & ${calculateHours(r.pmIn, r.pmOut)}</td>
+        </tr>`).join('') : `<tr><td colspan="6" class="text-center py-4 text-gray-500">No records found</td></tr>`;
+    document.getElementById('myRecordsTable').innerHTML = html;
+}
+
+function populateEmployeeDropdowns() {
+    const list = Object.keys(users).filter(id => users[id].role === 'employee');
+    const sel1 = document.getElementById('selectedEmp');
+    const sel2 = document.getElementById('printSelectedEmp');
+    sel1.innerHTML = `<option value="">-- Select Employee --</option>`;
+    sel2.innerHTML = `<option value="">-- Select Employee --</option>`;
+    list.forEach(id => {
+        const opt = `<option value="${id}">${users[id].fullName} (${id})</option>`;
+        sel1.innerHTML += opt;
+        sel2.innerHTML += opt;
+    });
+}
+
+function toggleEmployeeSelect() {
+    document.getElementById('empSelectDiv').classList.toggle('hidden', document.getElementById('viewType').value !== 'individual');
+}
+
+function loadAllRecords() {
+    let list = [...dtrRecords];
+    const view = document.getElementById('viewType').value;
+    const selId = document.getElementById('selectedEmp').value;
+    const search = document.getElementById('searchAll').value.toLowerCase();
+    if (view === 'individual' && selId) list = list.filter(r => r.empId === selId);
+    if (search) list = list.filter(r => r.empName.toLowerCase().includes(search) || r.date.includes(search));
+    list.sort((a,b) => new Date(b.date) - new Date(a.date));
+    const html = list.length ? list.map(r => `
+        <tr class="border-b hover:bg-gray-50">
+            <td class="px-4 py-2">${r.date}</td>
+            <td class="px-4 py-2">${r.empId}</td>
+            <td class="px-4 py-2">${r.empName}</td>
+            <td class="px-4 py-2">${formatTime12(r.amIn)}</td>
+            <td class="px-4 py-2">${formatTime12(r.amOut)}</td>
+            <td class="px-4 py-2">${formatTime12(r.pmIn)}</td>
+            <td class="px-4 py-2">${formatTime12(r.pmOut)}</td>
+            <td class="px-4 py-2 font-medium">${calculateHours(r.amIn, r.amOut)} & ${calculateHours(r.pmIn, r.pmOut)}</td>
+        </tr>`).join('') : `<tr><td colspan="8" class="text-center py-4 text-gray-500">No records found</td></tr>`;
+    document.getElementById('allRecordsTable').innerHTML = html;
+}
+
+document.getElementById('addUserForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const id = document.getElementById('newId').value.trim();
+    const name = document.getElementById('newName').value.trim();
+    const pass = document.getElementById('newPass').value;
+    const role = document.getElementById('newRole').value;
+    if (users[id]) { alert('ID already exists!'); return; }
+    users[id] = { password: pass, role: role, fullName: name };
+    localStorage.setItem('dtrUsers', JSON.stringify(users));
+    alert('User added successfully!');
+    this.reset();
+    renderUserList();
+    populateEmployeeDropdowns();
+});
+
+function renderUserList() {
+    const html = Object.keys(users).map(id => `
+        <div class="p-3 bg-gray-50 rounded border border-gray-200 mb-2">
+            <div><strong>ID:</strong> ${id}</div>
+            <div><strong>Name:</strong> ${users[id].fullName}</div>
+            <div><strong>Password:</strong> ${users[id].password}</div>
+            <div><strong>Role:</strong> <span class="${users[id].role === 'admin' ? 'text-red-600' : 'text-teal-600'}">${users[id].role.toUpperCase()}</span></div>
+            <button onclick="deleteUser('${id}')" class="mt-2 text-red-500 text-sm hover:underline">Delete</button>
+        </div>`).join('');
+    document.getElementById('userList').innerHTML = html;
+}
+
+function deleteUser(id) {
+    if (!confirm(`Delete user ${id}?`)) return;
+    delete users[id];
+    localStorage.setItem('dtrUsers', JSON.stringify(users));
+    dtrRecords = dtrRecords.filter(r => r.empId !== id);
+    localStorage.setItem('dtrRecords', JSON.stringify(dtrRecords));
+    renderUserList();
+    populateEmployeeDropdowns();
+}
+
+function openBackupModal() { document.getElementById('backupModal').classList.remove('hidden'); }
+function closeBackupModal() { document.getElementById('backupModal').classList.add('hidden'); }
+function openRestoreModal() { document.getElementById('restoreModal').classList.remove('hidden'); }
+function closeRestoreModal() { document.getElementById('restoreModal').classList.add('hidden'); }
+
+function exportToExcel() {
+    let csv = 'Date,Employee ID,Full Name,AM In,AM Out,PM In,PM Out,Total Hours\n';
+    dtrRecords.forEach(r => {
+        csv += `${r.date},${r.empId},"${r.empName}",${formatTime12(r.amIn)},${formatTime12(r.amOut)},${formatTime12(r.pmIn)},${formatTime12(r.pmOut)},"${calculateHours(r.amIn, r.amOut)} & ${calculateHours(r.pmIn, r.pmOut)}"\n`;
+    });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `DTR_Backup_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    closeBackupModal();
+}
+
+function exportToPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('landscape');
+    doc.setFontSize(16);
+    doc.text('Daily Time Record Report', 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
+    const rows = dtrRecords.map(r => [
+        r.date, r.empId, r.empName, formatTime12(r.amIn), formatTime12(r.amOut), formatTime12(r.pmIn), formatTime12(r.pmOut),
+        `${calculateHours(r.amIn, r.amOut)} / ${calculateHours(r.pmIn, r.pmOut)}`
+    ]);
+    doc.autoTable({
+        head: [['Date', 'ID', 'Name', 'AM In', 'AM Out', 'PM In', 'PM Out', 'Total']],
+        body: rows,
+        startY: 28,
+        theme: 'grid',
+        styles: { fontSize: 8 }
+    });
+    doc.save(`DTR_Report_${new Date().toISOString().slice(0,10)}.pdf`);
+    closeBackupModal();
+}
+
+function restoreFromBackup() {
+    const file = document.getElementById('backupFileInput').files[0];
+    if (!file) return alert('Select a file first.');
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const lines = e.target.result.trim().split('\n');
+        const newRecords = [];
+        for (let i = 1; i < lines.length; i++) {
+            const parts = lines[i].split(',');
+            if (parts.length >= 7) {
+                newRecords.push({
+                    date: parts[0].trim(),
+                    empId: parts[1].trim(),
+                    empName: parts[2].replace(/"/g, '').trim(),
+                    amIn: timeTo24h(parts[3].trim()),
+                    amOut: timeTo24h(parts[4].trim()),
+                    pmIn: timeTo24h(parts[5].trim()),
+                    pmOut: timeTo24h(parts[6].trim()),
+                    photos: {}
+                });
+            }
+        }
+        dtrRecords = newRecords;
+        localStorage.setItem('dtrRecords', JSON.stringify(dtrRecords));
+        alert('Restore completed!');
+        closeRestoreModal();
+    };
+    reader.readAsText(file);
+}
+
+function logout() {
+    const stream = document.getElementById('mainCamera')?.srcObject;
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    currentUser = null;
+    document.getElementById('mainSystem').classList.add('hidden');
+    document.getElementById('employeeLoginScreen').classList.remove('hidden');
+}
+</script>
+
+</body>
+</html>
